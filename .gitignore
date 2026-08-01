@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+data/ops.db
+data/evidence/*
+!data/evidence/.gitkeep

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DEF CON 34 Badge Ops</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>DEF CON 34 Badge Ops</h1>
+        <p>Research console, evidence locker, and Command Mode dashboard</p>
+      </div>
+      <button id="refreshBtn" title="Refresh dashboard">Refresh</button>
+    </header>
+
+    <main class="layout">
+      <nav class="sidebar" aria-label="Sections">
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="sources">Sources</button>
+        <button class="tab" data-tab="evidence">Evidence</button>
+        <button class="tab" data-tab="puzzles">Puzzles</button>
+        <button class="tab" data-tab="journal">Journal</button>
+        <button class="tab" data-tab="briefing">Briefing</button>
+      </nav>
+
+      <section id="dashboard" class="panel active-panel">
+        <div class="stats">
+          <div><span id="sourceCount">0</span><label>Sources</label></div>
+          <div><span id="claimCount">0</span><label>Claims</label></div>
+          <div><span id="evidenceCount">0</span><label>Evidence</label></div>
+          <div><span id="puzzleCount">0</span><label>Puzzles</label></div>
+        </div>
+        <div class="grid two">
+          <section>
+            <h2>Priority Queue</h2>
+            <div id="tasksList" class="list"></div>
+          </section>
+          <section>
+            <h2>Latest Claims</h2>
+            <div id="claimsList" class="list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="sources" class="panel">
+        <div class="grid two">
+          <form id="fetchSourceForm">
+            <h2>Fetch New Article</h2>
+            <label>URL<input name="url" required placeholder="https://..." /></label>
+            <button type="submit">Fetch Source</button>
+            <p class="hint">Fetched page text is stored as untrusted evidence for later review.</p>
+          </form>
+          <form id="claimForm">
+            <h2>Add Claim</h2>
+            <label>Claim<textarea name="claim" required></textarea></label>
+            <label>Category<input name="category" value="hardware" /></label>
+            <label>Confidence
+              <select name="confidence">
+                <option>Verified</option><option>Strong evidence</option><option>Inferred</option>
+                <option selected>Unverified</option><option>Speculation</option><option>Disputed</option><option>Obsolete</option>
+              </select>
+            </label>
+            <label>Source ID<input name="source_id" type="number" /></label>
+            <label>Practical significance<textarea name="practical_significance"></textarea></label>
+            <button type="submit">Record Claim</button>
+          </form>
+        </div>
+        <h2>Source Log</h2>
+        <div id="sourcesList" class="table"></div>
+      </section>
+
+      <section id="evidence" class="panel">
+        <form id="evidenceForm" enctype="multipart/form-data">
+          <h2>Upload Evidence</h2>
+          <div class="form-grid">
+            <label>File<input name="file" type="file" required /></label>
+            <label>Description<input name="description" /></label>
+            <label>Source<input name="source" /></label>
+            <label>Collection method<input name="collection_method" value="upload" /></label>
+            <label>Related puzzle<input name="related_puzzle" /></label>
+          </div>
+          <button type="submit">Upload and Hash</button>
+        </form>
+        <h2>Evidence Inventory</h2>
+        <div id="evidenceList" class="table"></div>
+      </section>
+
+      <section id="puzzles" class="panel">
+        <div class="grid two">
+          <form id="puzzleForm">
+            <h2>Add Puzzle</h2>
+            <label>Identifier<input name="identifier" required placeholder="puzzle-001" /></label>
+            <label>Name<input name="name" required /></label>
+            <label>Status
+              <select name="status">
+                <option>Not investigated</option><option>Researching</option><option>Ready to test</option>
+                <option>Testing</option><option>Partially solved</option><option>Candidate solution</option>
+                <option>Solved</option><option>Flag validated</option><option>Blocked</option><option>Abandoned</option>
+              </select>
+            </label>
+            <label>Confidence<input name="confidence" value="Speculative" /></label>
+            <label>Candidate flag<input name="candidate_flag" /></label>
+            <label>Notes<textarea name="notes"></textarea></label>
+            <button type="submit">Add Puzzle</button>
+          </form>
+          <form id="taskForm">
+            <h2>Add Priority Task</h2>
+            <label>Priority
+              <select name="priority"><option>P0</option><option>P1</option><option>P2</option><option>P3</option></select>
+            </label>
+            <label>Objective<input name="objective" required /></label>
+            <label>Reason<textarea name="reason"></textarea></label>
+            <label>Required tools<input name="required_tools" /></label>
+            <label>Risk<input name="risk" value="Low" /></label>
+            <label>Next action<textarea name="next_action"></textarea></label>
+            <button type="submit">Add Task</button>
+          </form>
+        </div>
+        <h2>Puzzle and Flag Status</h2>
+        <div id="puzzlesList" class="table"></div>
+      </section>
+
+      <section id="journal" class="panel">
+        <form id="journalForm">
+          <h2>Research Journal Update</h2>
+          <label>Objective<input name="objective" required /></label>
+          <label>Result<textarea name="result"></textarea></label>
+          <label>Interpretation<textarea name="interpretation"></textarea></label>
+          <label>Confidence<input name="confidence" value="Moderate" /></label>
+          <label>Next action<textarea name="next_action"></textarea></label>
+          <button type="submit">Add Journal Entry</button>
+        </form>
+        <h2>Recent Journal</h2>
+        <div id="journalList" class="list"></div>
+      </section>
+
+      <section id="briefing" class="panel">
+        <div class="briefing-actions">
+          <button id="briefingBtn">Generate Operations Briefing</button>
+        </div>
+        <pre id="briefingOutput"></pre>
+      </section>
+    </main>
+
+    <div id="toast" role="status"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
