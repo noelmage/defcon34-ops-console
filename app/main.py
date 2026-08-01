@@ -239,7 +239,7 @@ async def fetch_source(url: str = Form(...), _: None = Depends(require_auth)) ->
         target = REPO_PATH / "evidence" / "derived" / f"{today()}_web_{slugify(title)}_text.txt"
         target.write_text(f"URL: {url}\nFetched: {now_iso()}\nTitle: {title}\n\n{body}\n", encoding="utf-8")
         source_doc = document_path("sources")
-        source_id = f"SRC-{count_matches(read_document('sources'), r'^\\|\\s*SRC-') + 1:03d}"
+        source_id = f"SRC-{count_matches(read_document('sources'), r'^\|\s*SRC-') + 1:03d}"
         append_markdown(source_doc, f"| {source_id} | {markdown_cell(title)} | Web page | Unrecorded | {url} | Unknown | {today()} | Unknown | Yes | Unrated | Fetched; review pending |")
         commit_and_push(f"Acquire source: {title[:60]}", [target, source_doc])
     return {"source_id": source_id, "path": str(target.relative_to(REPO_PATH)).replace("\\", "/")}
