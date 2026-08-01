@@ -89,6 +89,19 @@ th { color: var(--muted); font-weight: 600; }
 pre { white-space: pre-wrap; min-height: 320px; line-height: 1.5; }
 .markdown-view { overflow: auto; max-height: calc(100vh - 200px); }
 .markdown-view pre { border: 0; background: transparent; padding: 0; margin: 0; min-height: 0; }
+.rendered-markdown { line-height: 1.55; }
+.rendered-markdown > :first-child { margin-top: 0; }
+.rendered-markdown h1, .rendered-markdown h2, .rendered-markdown h3 { margin: 24px 0 10px; font-size: 18px; }
+.rendered-markdown h1 { font-size: 22px; }
+.rendered-markdown h3 { font-size: 15px; color: var(--accent); }
+.rendered-markdown p { color: var(--text); margin: 0 0 12px; }
+.rendered-markdown ul { margin: 0 0 14px; padding-left: 22px; }
+.rendered-markdown li { margin: 5px 0; }
+.rendered-markdown blockquote { margin: 14px 0; padding: 9px 12px; border-left: 3px solid var(--accent); background: #101719; color: var(--muted); }
+.rendered-markdown code { color: var(--warn); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.rendered-markdown a { color: var(--accent); }
+.markdown-table { overflow-x: auto; margin: 14px 0; }
+.markdown-table table { min-width: 680px; }
 .document-toolbar { display: flex; align-items: end; gap: 10px; max-width: 700px; }
 .document-toolbar label { flex: 1; }
 .editor { min-height: calc(100vh - 255px); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.5; }

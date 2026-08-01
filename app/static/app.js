@@ -4,7 +4,52 @@ const $ = (id) => document.getElementById(id);
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 function toast(message) { const el = $("toast"); el.textContent = message; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 2600); }
-function markdown(text) { return `<pre>${escapeHtml(text)}</pre>`; }
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function markdown(text) {
+  const lines = String(text ?? "").replace(/\r\n/g, "\n").split("\n");
+  const output = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (line.includes("|") && /^\s*\|?[\s:|-]+\|/.test(lines[index + 1] || "")) {
+      const cells = (value) => value.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+      const header = cells(line);
+      const rows = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) rows.push(cells(lines[index++]));
+      index -= 1;
+      output.push(`<div class="markdown-table"><table><thead><tr>${header.map((cell) => `<th>${inlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${header.map((_, column) => `<td>${inlineMarkdown(row[column] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(line)) {
+      output.push(`<li>${inlineMarkdown(line.replace(/^[-*]\s+/, ""))}</li>`);
+      continue;
+    }
+    if (/^>\s?/.test(line)) {
+      output.push(`<blockquote>${inlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>`);
+      continue;
+    }
+    output.push(`<p>${inlineMarkdown(line)}</p>`);
+  }
+
+  return `<article class="rendered-markdown">${output.join("").replace(/(<li>.*?<\/li>)+/g, (items) => `<ul>${items}</ul>`)}</article>`;
+}
 function table(records) {
   if (!records.length) return '<p class="hint">No repository evidence files yet.</p>';
   const rows = records.map((file) => `<tr><td>${escapeHtml(file.filename)}</td><td>${escapeHtml(file.path)}</td><td><code>${escapeHtml(file.sha256)}</code></td><td>${escapeHtml(file.bytes)}</td></tr>`).join("");
