@@ -40,6 +40,7 @@ async function loadDashboard() {
   $("claimCount").textContent = state.claims.length;
   $("evidenceCount").textContent = state.evidence.length;
   $("puzzleCount").textContent = state.puzzles.length;
+  $("repoStatus").textContent = state.repo ? `Repo ${state.repo.branch}@${state.repo.head}` : "";
 
   $("tasksList").innerHTML = state.tasks.map((t) =>
     item(`${t.priority}: ${t.objective}`, t.next_action, `${t.status} | risk: ${t.risk} | tools: ${t.required_tools}`)

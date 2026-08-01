@@ -10,10 +10,12 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      DEFCON_OPS_DB: /app/data/ops.db
-      DEFCON_OPS_EVIDENCE_DIR: /app/data/evidence
       DEFCON_OPS_USER: ${DEFCON_OPS_USER:-admin}
       DEFCON_OPS_PASSWORD: ${DEFCON_OPS_PASSWORD:-change-me}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      OPS_REPO_URL: ${OPS_REPO_URL:-https://github.com/noelmage/DefCon34Badge.git}
+      OPS_REPO_BRANCH: ${OPS_REPO_BRANCH:-main}
+      OPS_REPO_PATH: /app/data/DefCon34Badge
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.defcon34-ops.rule=Host(`dc34.henry.house`)"

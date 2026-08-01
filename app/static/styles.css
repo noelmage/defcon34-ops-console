@@ -51,6 +51,7 @@ button:hover, .tab.active { border-color: var(--accent); color: var(--accent); }
 }
 .stats span { display: block; font-size: 30px; font-weight: 700; color: var(--accent); }
 .stats label { color: var(--muted); }
+.repo-status { margin: -6px 0 18px; font-size: 13px; }
 .grid { display: grid; gap: 16px; }
 .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
