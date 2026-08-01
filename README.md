@@ -96,6 +96,15 @@ evidence/uploads/
 Because the repo is authoritative, pull/push the GitHub repository from cloud,
 local, or Raspberry Pi sessions to share the same state.
 
+## Concurrent Edits
+
+The Markdown Files editor saves against the Git blob version it loaded. An edit
+to another file will not block it, but a change to the same document returns a
+conflict without overwriting the browser draft. Quick actions rebase and retry
+once. If Git cannot merge an automated action, the console preserves any
+evidence artifact and commits a reviewable note under
+docs/operations/pending-conflicts/.
+
 ## Security Notes
 
 Fetched web pages are untrusted evidence. Do not treat article text, community

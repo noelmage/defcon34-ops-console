@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
@@ -43,6 +43,13 @@ app = FastAPI(title="DEF CON 34 Badge Ops Console")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 security = HTTPBasic()
 repo_lock = threading.Lock()
+
+
+class GitCommandError(RuntimeError):
+    def __init__(self, args: list[str], output: str):
+        self.args = args
+        self.output = output
+        super().__init__(f"git {' '.join(args)} failed: {output}")
 
 
 def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
@@ -90,8 +97,13 @@ def run_git(args: list[str], cwd: Path | None = None) -> str:
         check=False,
     )
     if result.returncode:
-        raise HTTPException(500, f"git {' '.join(args)} failed: {redact((result.stderr or result.stdout).strip())}")
+        raise GitCommandError(args, redact((result.stderr or result.stdout).strip()))
     return result.stdout.strip()
+
+
+@app.exception_handler(GitCommandError)
+def git_command_error(_: object, exc: GitCommandError) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 
 def ensure_repo() -> None:
@@ -114,14 +126,85 @@ def sync_repo() -> None:
     run_git(["pull", "--ff-only", "origin", REPO_BRANCH], REPO_PATH)
 
 
+def relative_path(path: Path) -> str:
+    return str(path.relative_to(REPO_PATH)).replace("\\", "/")
+
+
+def document_version(path: Path) -> str:
+    return run_git(["rev-parse", f"HEAD:{relative_path(path)}"], REPO_PATH)
+
+
+def is_push_race(error: GitCommandError) -> bool:
+    return any(marker in error.output.lower() for marker in ("non-fast-forward", "fetch first", "[rejected]"))
+
+
+def is_rebase_conflict(error: GitCommandError) -> bool:
+    return any(marker in error.output.lower() for marker in ("conflict", "could not apply", "resolve all conflicts"))
+
+
+def abort_and_reset() -> None:
+    subprocess.run(git_prefix() + ["rebase", "--abort"], cwd=REPO_PATH, capture_output=True, check=False)
+    run_git(["fetch", "origin", "--prune"], REPO_PATH)
+    run_git(["reset", "--hard", f"origin/{REPO_BRANCH}"], REPO_PATH)
+
+
+def write_pending_change(message: str, paths: list[Path], snapshots: dict[Path, bytes]) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    pending = REPO_PATH / "docs" / "operations" / "pending-conflicts" / f"{stamp}_{slugify(message)}.md"
+    markdown_paths = [path for path in paths if path.suffix.lower() in {".md", ".markdown"}]
+    artifact_paths = [path for path in paths if path not in markdown_paths]
+    parts = [
+        f"# Pending dashboard change - {today()}",
+        "",
+        f"- **Intent:** {message}",
+        "- **Reason:** GitHub changed the same document while this dashboard action was being saved.",
+        "- **Status:** Review and merge this pending change into the current document deliberately.",
+    ]
+    if artifact_paths:
+        parts.extend(["", "## Preserved artifacts", ""])
+        parts.extend(f"- {relative_path(path)}" for path in artifact_paths)
+    for path in markdown_paths:
+        parts.extend(["", f"## Intended content: {relative_path(path)}", "", snapshots[path].decode("utf-8", errors="replace").rstrip()])
+    pending.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text("\n".join(parts).rstrip() + "\n", encoding="utf-8")
+    return pending
+
+
+def preserve_conflict(message: str, paths: list[Path], snapshots: dict[Path, bytes]) -> None:
+    abort_and_reset()
+    artifacts = [path for path in paths if path.suffix.lower() not in {".md", ".markdown"}]
+    for path in artifacts:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(snapshots[path])
+    pending = write_pending_change(message, paths, snapshots)
+    recovery_paths = [*artifacts, pending]
+    run_git(["add", *(relative_path(path) for path in recovery_paths)], REPO_PATH)
+    run_git(["commit", "-m", f"Preserve pending change: {message[:50]}"], REPO_PATH)
+    run_git(["push", "origin", REPO_BRANCH], REPO_PATH)
+    raise HTTPException(409, f"A concurrent GitHub edit needs review. The pending change is saved at {relative_path(pending)}.")
+
+
 def commit_and_push(message: str, paths: list[Path]) -> None:
     rel_paths = [str(path.relative_to(REPO_PATH)).replace("\\", "/") for path in paths]
     run_git(["add", *rel_paths], REPO_PATH)
     if not run_git(["status", "--porcelain"], REPO_PATH):
         return
     run_git(["commit", "-m", message], REPO_PATH)
-    run_git(["pull", "--rebase", "origin", REPO_BRANCH], REPO_PATH)
-    run_git(["push", "origin", REPO_BRANCH], REPO_PATH)
+    snapshots = {path: path.read_bytes() for path in paths}
+    for attempt in range(2):
+        try:
+            run_git(["pull", "--rebase", "origin", REPO_BRANCH], REPO_PATH)
+        except GitCommandError as exc:
+            if not is_rebase_conflict(exc):
+                raise
+            preserve_conflict(message, paths, snapshots)
+        try:
+            run_git(["push", "origin", REPO_BRANCH], REPO_PATH)
+            return
+        except GitCommandError as exc:
+            if attempt == 0 and is_push_race(exc):
+                continue
+            preserve_conflict(message, paths, snapshots)
 
 
 def document_path(key: str) -> Path:
@@ -205,20 +288,20 @@ def dashboard(_: None = Depends(require_auth)) -> dict[str, Any]:
 def get_document(key: str, _: None = Depends(require_auth)) -> dict[str, str]:
     with repo_lock:
         sync_repo()
-        return {"key": key, "title": DOCUMENTS[key][0], "path": DOCUMENTS[key][1], "markdown": read_document(key), "head": run_git(["rev-parse", "HEAD"], REPO_PATH)}
+        path = document_path(key)
+        return {"key": key, "title": DOCUMENTS[key][0], "path": DOCUMENTS[key][1], "markdown": read_document(key), "head": run_git(["rev-parse", "HEAD"], REPO_PATH), "version": document_version(path)}
 
 
 @app.post("/api/documents/{key}")
-def save_document(key: str, markdown: str = Form(...), expected_head: str = Form(...), _: None = Depends(require_auth)) -> dict[str, str]:
+def save_document(key: str, markdown: str = Form(...), expected_version: str = Form(...), _: None = Depends(require_auth)) -> dict[str, str]:
     with repo_lock:
         sync_repo()
-        current_head = run_git(["rev-parse", "HEAD"], REPO_PATH)
-        if not secrets.compare_digest(expected_head, current_head):
-            raise HTTPException(409, "This document changed in GitHub. Refresh it before saving your edits.")
         path = document_path(key)
+        if not secrets.compare_digest(expected_version, document_version(path)):
+            raise HTTPException(409, "This document changed in GitHub. Your draft is still in the editor; reload and merge it before saving.")
         path.write_text(markdown.rstrip() + "\n", encoding="utf-8")
         commit_and_push(f"Update {DOCUMENTS[key][0].lower()}", [path])
-        return {"path": DOCUMENTS[key][1], "head": run_git(["rev-parse", "HEAD"], REPO_PATH)}
+        return {"path": DOCUMENTS[key][1], "head": run_git(["rev-parse", "HEAD"], REPO_PATH), "version": document_version(path)}
 
 
 @app.post("/api/fetch-source")
