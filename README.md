@@ -10,7 +10,7 @@ It provides:
 
 - Command Mode dashboard and priority queue
 - single-URL source fetching into the repo
-- source log and claim tracking in `ops/*.json`
+- direct reading and editing of the agent-owned Markdown documents
 - evidence upload with SHA-256 hashing
 - puzzle and candidate flag tracking
 - research journal entries
@@ -65,21 +65,13 @@ Persistent clone/cache data lives under:
 data/
 ```
 
-The app writes durable project records to the badge repo:
+The console reads and writes the established Markdown documents under `docs/`.
+Quick actions append to the source register, operations briefing, knowledge bases,
+evidence inventory, and research journal; the Markdown Files view edits those
+same documents directly. Fetched pages are stored under:
 
 ```text
-ops/sources.json
-ops/claims.json
-ops/evidence.json
-ops/puzzles.json
-ops/tasks.json
-ops/journal.json
-```
-
-Fetched pages are stored under:
-
-```text
-ops/fetched-sources/
+evidence/derived/
 ```
 
 Uploaded evidence is stored under:
