@@ -8,8 +8,11 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      DEFCON_OPS_USER: ${DEFCON_OPS_USER:-admin}
-      DEFCON_OPS_PASSWORD: ${DEFCON_OPS_PASSWORD:-change-me}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ALLOWED_EMAIL: ${GOOGLE_ALLOWED_EMAIL:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://dc34.henry.house/auth/google/callback}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       OPS_REPO_URL: ${OPS_REPO_URL:-https://github.com/noelmage/DefCon34Badge.git}
       OPS_REPO_BRANCH: ${OPS_REPO_BRANCH:-main}

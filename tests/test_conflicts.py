@@ -4,11 +4,24 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from app import main
 
 
 class ConflictPolicyTests(unittest.TestCase):
+    def test_unconfigured_console_does_not_fall_back_to_basic_auth(self) -> None:
+        with (
+            patch.object(main, "GOOGLE_CLIENT_ID", ""),
+            patch.object(main, "GOOGLE_CLIENT_SECRET", ""),
+            patch.object(main, "GOOGLE_ALLOWED_EMAIL", ""),
+            patch.object(main, "SESSION_SECRET", ""),
+        ):
+            response = TestClient(main.app).get("/", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Google OAuth", response.text)
+
     def test_recent_commits_includes_changed_paths(self) -> None:
         output = "\x1eabcdef0123456789\x1f2026-08-01T12:00:00+00:00\x1fAcquire source\n" \
             "docs/research/sources.md\n" \

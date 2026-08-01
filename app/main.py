@@ -9,22 +9,26 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from authlib.integrations.starlette_client import OAuth, OAuthError
 from bs4 import BeautifulSoup
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 APP_DIR = Path(__file__).resolve().parent
 ROOT_DIR = APP_DIR.parent
 STATIC_DIR = APP_DIR / "static"
 
-OPS_USER = os.getenv("DEFCON_OPS_USER", "admin")
-OPS_PASSWORD = os.getenv("DEFCON_OPS_PASSWORD", "change-me")
 REPO_URL = os.getenv("OPS_REPO_URL", "https://github.com/noelmage/DefCon34Badge.git")
 REPO_BRANCH = os.getenv("OPS_REPO_BRANCH", "main")
 REPO_PATH = Path(os.getenv("OPS_REPO_PATH", ROOT_DIR / "data" / "DefCon34Badge"))
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_ALLOWED_EMAIL = os.getenv("GOOGLE_ALLOWED_EMAIL", "").strip().lower()
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "https://dc34.henry.house/auth/google/callback")
+SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 
 # These are the agent-owned Markdown artifacts. The console has no second ledger.
 DOCUMENTS = {
@@ -40,9 +44,24 @@ DOCUMENTS = {
 }
 
 app = FastAPI(title="DEF CON 34 Badge Ops Console")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET or "oauth-not-configured",
+    session_cookie="dc34_session",
+    max_age=12 * 60 * 60,
+    same_site="lax",
+    https_only=True,
+)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-security = HTTPBasic()
 repo_lock = threading.Lock()
+oauth = OAuth()
+oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+    client_kwargs={"scope": "openid email profile"},
+)
 
 
 class GitCommandError(RuntimeError):
@@ -52,12 +71,17 @@ class GitCommandError(RuntimeError):
         super().__init__(f"git {' '.join(args)} failed: {output}")
 
 
-def require_auth(credentials: HTTPBasicCredentials = Depends(security)) -> None:
-    if not (
-        secrets.compare_digest(credentials.username, OPS_USER)
-        and secrets.compare_digest(credentials.password, OPS_PASSWORD)
-    ):
-        raise HTTPException(401, "Authentication required", {"WWW-Authenticate": "Basic"})
+def oauth_is_configured() -> bool:
+    return all((GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_ALLOWED_EMAIL, SESSION_SECRET))
+
+
+def require_auth(request: Request) -> str:
+    if not oauth_is_configured():
+        raise HTTPException(503, "Google OAuth is not configured")
+    email = str(request.session.get("email", "")).strip().lower()
+    if not email or not secrets.compare_digest(email, GOOGLE_ALLOWED_EMAIL):
+        raise HTTPException(401, "Sign in with the allowed Google account")
+    return email
 
 
 def now_iso() -> str:
@@ -299,13 +323,51 @@ def activity_feed() -> dict[str, list[dict[str, Any]]]:
     }
 
 
-@app.get("/")
-def index(_: None = Depends(require_auth)) -> FileResponse:
+@app.get("/", response_model=None)
+def index(request: Request):
+    if not oauth_is_configured():
+        return HTMLResponse("Google OAuth is not configured yet.", status_code=503)
+    if str(request.session.get("email", "")).strip().lower() != GOOGLE_ALLOWED_EMAIL:
+        return RedirectResponse("/auth/google/login", status_code=302)
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/auth/google/login")
+async def google_login(request: Request) -> RedirectResponse:
+    if not oauth_is_configured():
+        raise HTTPException(503, "Google OAuth is not configured")
+    return await oauth.google.authorize_redirect(request, GOOGLE_REDIRECT_URI, nonce=secrets.token_urlsafe(24))
+
+
+@app.get("/auth/google/callback")
+async def google_callback(request: Request) -> RedirectResponse:
+    if not oauth_is_configured():
+        raise HTTPException(503, "Google OAuth is not configured")
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        userinfo = token.get("userinfo") or await oauth.google.parse_id_token(request, token)
+    except OAuthError as exc:
+        raise HTTPException(401, f"Google sign-in failed: {exc.error}") from exc
+
+    email = str(userinfo.get("email", "")).strip().lower()
+    if not userinfo.get("email_verified") or not secrets.compare_digest(email, GOOGLE_ALLOWED_EMAIL):
+        request.session.clear()
+        raise HTTPException(403, "This Google account is not allowed to access the ops console")
+
+    request.session.clear()
+    request.session["email"] = email
+    request.session["name"] = str(userinfo.get("name", ""))
+    return RedirectResponse("/", status_code=302)
+
+
+@app.post("/auth/logout")
+def google_logout(request: Request, _: str = Depends(require_auth)) -> JSONResponse:
+    request.session.clear()
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/dashboard")
-def dashboard(_: None = Depends(require_auth)) -> dict[str, Any]:
+def dashboard(_: str = Depends(require_auth)) -> dict[str, Any]:
     with repo_lock:
         sync_repo()
         docs = [{"key": key, "title": title, "path": path} for key, (title, path) in DOCUMENTS.items()]
@@ -332,7 +394,7 @@ def dashboard(_: None = Depends(require_auth)) -> dict[str, Any]:
 
 
 @app.get("/api/documents/{key}")
-def get_document(key: str, _: None = Depends(require_auth)) -> dict[str, str]:
+def get_document(key: str, _: str = Depends(require_auth)) -> dict[str, str]:
     with repo_lock:
         sync_repo()
         path = document_path(key)
@@ -340,7 +402,7 @@ def get_document(key: str, _: None = Depends(require_auth)) -> dict[str, str]:
 
 
 @app.post("/api/documents/{key}")
-def save_document(key: str, markdown: str = Form(...), expected_version: str = Form(...), _: None = Depends(require_auth)) -> dict[str, str]:
+def save_document(key: str, markdown: str = Form(...), expected_version: str = Form(...), _: str = Depends(require_auth)) -> dict[str, str]:
     with repo_lock:
         sync_repo()
         path = document_path(key)
@@ -352,7 +414,7 @@ def save_document(key: str, markdown: str = Form(...), expected_version: str = F
 
 
 @app.post("/api/fetch-source")
-async def fetch_source(url: str = Form(...), _: None = Depends(require_auth)) -> dict[str, str]:
+async def fetch_source(url: str = Form(...), _: str = Depends(require_auth)) -> dict[str, str]:
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
             response = await client.get(url, headers={"User-Agent": "DEFCON34BadgeOps/0.3"})
@@ -383,7 +445,7 @@ def add_observation(
     confidence: str = Form("Low"),
     evidence: str = Form(""),
     next_step: str = Form(""),
-    _: None = Depends(require_auth),
+    _: str = Depends(require_auth),
 ) -> dict[str, str]:
     if knowledge_base not in {"hardware", "software", "reverse"}:
         raise HTTPException(400, "Choose a knowledge-base document")
@@ -408,7 +470,7 @@ def add_observation(
 def add_task(
     priority: str = Form(...), objective: str = Form(...), reason: str = Form(""), tools: str = Form(""),
     risk: str = Form("Low"), next_action: str = Form(""), stop_condition: str = Form(""),
-    _: None = Depends(require_auth),
+    _: str = Depends(require_auth),
 ) -> dict[str, str]:
     row = "| " + " | ".join(markdown_cell(value) for value in [priority, objective, reason, tools, "Unestimated", risk, next_action, stop_condition]) + " |"
     with repo_lock:
@@ -424,7 +486,7 @@ def add_task(
 
 
 @app.post("/api/journal")
-def add_journal(objective: str = Form(...), result: str = Form(""), interpretation: str = Form(""), next_action: str = Form(""), _: None = Depends(require_auth)) -> dict[str, str]:
+def add_journal(objective: str = Form(...), result: str = Form(""), interpretation: str = Form(""), next_action: str = Form(""), _: str = Depends(require_auth)) -> dict[str, str]:
     entry = "\n".join([
         f"## {today()} - {objective.strip()}", "", f"- **Result:** {result.strip() or 'Pending'}",
         f"- **Interpretation:** {interpretation.strip() or 'Not yet assessed'}", f"- **Next action:** {next_action.strip() or 'Review'}",
@@ -438,7 +500,7 @@ def add_journal(objective: str = Form(...), result: str = Form(""), interpretati
 
 
 @app.post("/api/upload-evidence")
-async def upload_evidence(file: UploadFile = File(...), description: str = Form(""), source: str = Form(""), related_item: str = Form(""), _: None = Depends(require_auth)) -> dict[str, str]:
+async def upload_evidence(file: UploadFile = File(...), description: str = Form(""), source: str = Form(""), related_item: str = Form(""), _: str = Depends(require_auth)) -> dict[str, str]:
     raw = await file.read()
     digest = hashlib.sha256(raw).hexdigest()
     original_name = Path(file.filename or "evidence.bin")
