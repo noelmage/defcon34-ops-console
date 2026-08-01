@@ -1,8 +1,6 @@
 services:
   defcon34-ops:
-    image: defcon34-ops:latest
-    build:
-      context: .
+    image: ghcr.io/noelmage/defcon34-ops-console:latest
     container_name: defcon34-ops
     restart: unless-stopped
     ports:

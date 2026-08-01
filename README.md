@@ -57,6 +57,19 @@ For public internet exposure, put it behind HTTPS and authentication. A simple
 recommended deployment is Tailscale-only access plus a reverse proxy such as
 Caddy or Traefik.
 
+## Hostinger Docker Manager
+
+The repository carries two Compose files for two different environments:
+
+- `docker-compose.yml` builds from the local checkout for development.
+- `docker-compose.yaml` runs the published GitHub Container Registry image for
+  Hostinger's **Compose from URL** workflow.
+
+Pushing `master` publishes `ghcr.io/noelmage/defcon34-ops-console:latest`
+through GitHub Actions. The GitHub Container Registry package must be public
+so Hostinger can pull it without registry credentials. Runtime credentials
+remain Hostinger environment variables; never place them in this repository.
+
 ## Data And Sync
 
 Persistent clone/cache data lives under:
