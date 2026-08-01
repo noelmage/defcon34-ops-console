@@ -9,6 +9,17 @@ from app import main
 
 
 class ConflictPolicyTests(unittest.TestCase):
+    def test_recent_commits_includes_changed_paths(self) -> None:
+        output = "\x1eabcdef0123456789\x1f2026-08-01T12:00:00+00:00\x1fAcquire source\n" \
+            "docs/research/sources.md\n" \
+            "evidence/derived/site.txt\n"
+        with patch.object(main, "run_git", return_value=output):
+            commits = main.recent_commits()
+
+        self.assertEqual(commits[0]["sha"], "abcdef0")
+        self.assertEqual(commits[0]["subject"], "Acquire source")
+        self.assertEqual(commits[0]["paths"], ["docs/research/sources.md", "evidence/derived/site.txt"])
+
     def test_push_race_detection(self) -> None:
         self.assertTrue(main.is_push_race(main.GitCommandError(["push"], "rejected non-fast-forward")))
         self.assertFalse(main.is_push_race(main.GitCommandError(["push"], "authentication failed")))

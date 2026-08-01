@@ -102,6 +102,15 @@ pre { white-space: pre-wrap; min-height: 320px; line-height: 1.5; }
 .rendered-markdown a { color: var(--accent); }
 .markdown-table { overflow-x: auto; margin: 14px 0; }
 .markdown-table table { min-width: 680px; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
+.activity-section h2, .dashboard-grid > section > h2 { margin-bottom: 10px; }
+.activity-feed { display: grid; gap: 14px; }
+.activity-group h3 { margin: 0 0 7px; color: var(--accent); font-size: 13px; }
+.activity-entry { border-bottom: 1px solid var(--line); padding: 9px 0; }
+.activity-entry:last-child { border-bottom: 0; }
+.activity-entry strong { display: block; font-size: 14px; }
+.activity-entry p { margin: 4px 0 0; font-size: 13px; }
+.activity-entry .meta { margin-top: 5px; overflow-wrap: anywhere; }
 .document-toolbar { display: flex; align-items: end; gap: 10px; max-width: 700px; }
 .document-toolbar label { flex: 1; }
 .editor { min-height: calc(100vh - 255px); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.5; }
@@ -121,6 +130,6 @@ pre { white-space: pre-wrap; min-height: 320px; line-height: 1.5; }
   .layout { grid-template-columns: 1fr; }
   .sidebar { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .tab { min-width: max-content; }
-  .grid.two, .stats, .form-grid { grid-template-columns: 1fr; }
+  .grid.two, .stats, .form-grid, .dashboard-grid { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; }
 }

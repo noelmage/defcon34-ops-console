@@ -254,6 +254,51 @@ def evidence_files() -> list[dict[str, str]]:
     return files
 
 
+def recent_commits(limit: int = 8) -> list[dict[str, Any]]:
+    output = run_git(
+        ["log", f"-{limit}", "--name-only", "--format=%x1e%H%x1f%aI%x1f%s"],
+        REPO_PATH,
+    )
+    commits: list[dict[str, Any]] = []
+    for record in output.split("\x1e"):
+        lines = [line for line in record.strip().splitlines() if line.strip()]
+        if not lines:
+            continue
+        sha, timestamp, subject = lines[0].split("\x1f", maxsplit=2)
+        commits.append({
+            "sha": sha[:7],
+            "timestamp": timestamp,
+            "subject": subject,
+            "paths": lines[1:5],
+        })
+    return commits
+
+
+def markdown_log_entries(key: str, pattern: str, kind: str, limit: int = 4) -> list[dict[str, str]]:
+    text = read_document(key)
+    matches = list(re.finditer(pattern, text, flags=re.MULTILINE))
+    entries: list[dict[str, str]] = []
+    for index, match in enumerate(matches):
+        body_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = text[match.end():body_end]
+        summary = re.search(r"^- \*\*(?:Result|Conclusion|Reason|Objective):\*\*\s*(.+)$", body, flags=re.MULTILINE)
+        entries.append({
+            "kind": kind,
+            "title": match.group(1).strip(),
+            "summary": summary.group(1).strip() if summary else body.strip().splitlines()[0].lstrip("- ").strip() if body.strip() else "",
+            "path": DOCUMENTS[key][1],
+        })
+    return list(reversed(entries[-limit:]))
+
+
+def activity_feed() -> dict[str, list[dict[str, Any]]]:
+    return {
+        "commits": recent_commits(),
+        "journal": markdown_log_entries("journal", r"^##\s+(.+)$", "Journal"),
+        "decisions": markdown_log_entries("decisions", r"^###\s+(.+)$", "Decision"),
+    }
+
+
 @app.get("/")
 def index(_: None = Depends(require_auth)) -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -270,6 +315,7 @@ def dashboard(_: None = Depends(require_auth)) -> dict[str, Any]:
         journal = read_document("journal")
         evidence = evidence_files()
         head = run_git(["rev-parse", "--short", "HEAD"], REPO_PATH)
+        activity = activity_feed()
     return {
         "repo": {"branch": REPO_BRANCH, "head": head},
         "documents": docs,
@@ -281,6 +327,7 @@ def dashboard(_: None = Depends(require_auth)) -> dict[str, Any]:
         },
         "operations": operations,
         "evidence": evidence,
+        "activity": activity,
     }
 
 

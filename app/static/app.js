@@ -55,6 +55,27 @@ function table(records) {
   const rows = records.map((file) => `<tr><td>${escapeHtml(file.filename)}</td><td>${escapeHtml(file.path)}</td><td><code>${escapeHtml(file.sha256)}</code></td><td>${escapeHtml(file.bytes)}</td></tr>`).join("");
   return `<table><thead><tr><th>File</th><th>Repository path</th><th>SHA-256</th><th>Bytes</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
+function activityFeed(activity) {
+  const groups = [
+    ["Repository changes", activity.commits || []],
+    ["Journal highlights", activity.journal || []],
+    ["Decisions and dead ends", activity.decisions || []],
+  ];
+  const renderedGroups = groups.map(([label, entries]) => {
+    if (!entries.length) return "";
+    const renderedEntries = entries.map((entry) => {
+      const title = entry.subject || entry.title || "Untitled activity";
+      const detail = entry.summary || (entry.paths || []).join(", ");
+      const timestamp = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : entry.path || "";
+      return '<article class="activity-entry"><strong>' + escapeHtml(title) + '</strong>' +
+        (detail ? '<p>' + escapeHtml(detail) + '</p>' : "") +
+        '<div class="meta">' + escapeHtml(timestamp) + '</div></article>';
+    }).join("");
+    return '<section class="activity-group"><h3>' + escapeHtml(label) + '</h3>' + renderedEntries + '</section>';
+  }).join("");
+  return renderedGroups ? '<div class="activity-feed">' + renderedGroups + '</div>' : '<p class="hint">No recent repository activity.</p>';
+}
+
 async function postForm(url, form) { const response = await fetch(url, { method: "POST", body: new FormData(form) }); if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.detail || response.statusText); } return response.json(); }
 
 async function loadDocument(key, target) {
@@ -64,7 +85,7 @@ async function loadDocument(key, target) {
 async function loadDashboard() {
   const response = await fetch("/api/dashboard"); if (!response.ok) throw new Error("Could not refresh repository"); state = await response.json();
   $("sourceCount").textContent = state.counts.sources; $("claimCount").textContent = state.counts.claims; $("evidenceCount").textContent = state.counts.evidence; $("journalCount").textContent = state.counts.journal_entries;
-  $("repoStatus").textContent = `GitHub source of truth: ${state.repo.branch}@${state.repo.head}`; $("operationsView").innerHTML = markdown(state.operations); $("evidenceList").innerHTML = table(state.evidence);
+$("repoStatus").textContent = `GitHub source of truth: ${state.repo.branch}@${state.repo.head}`; $("activityList").innerHTML = activityFeed(state.activity); $("operationsView").innerHTML = markdown(state.operations); $("evidenceList").innerHTML = table(state.evidence);
   const select = $("documentSelect"); const current = select.value; select.innerHTML = state.documents.map((doc) => `<option value="${escapeHtml(doc.key)}">${escapeHtml(doc.title)}</option>`).join(""); if (current) select.value = current;
   await Promise.all([loadDocument("hardware", "knowledgeView"), loadDocument("sources", "sourcesView"), loadDocument("journal", "journalView")]);
 }
